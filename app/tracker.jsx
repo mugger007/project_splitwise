@@ -1544,21 +1544,27 @@ export default function TravelExpenseTracker() {
         let savedTripId = localStorage.getItem("current-trip-id");
         console.log('[useEffect/load] Saved tripId from localStorage:', savedTripId);
 
-        // If no tripId, create a new trip
+        // If no tripId, load most recent existing trip; only create if none exist
         if (!savedTripId) {
-          console.log('[useEffect/load] No tripId found, creating new trip');
-          const createRes = await fetch('/api/trips/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          });
-          if (!createRes.ok) {
-            console.error('[useEffect/load] Failed to create trip:', await createRes.text());
-            setLoaded(true);
-            return;
+          const listRes = await fetch('/api/trips/list');
+          if (listRes.ok) {
+            const trips = await listRes.json();
+            if (Array.isArray(trips) && trips.length > 0) {
+              savedTripId = trips[0].id;
+            }
           }
-          const createData = await createRes.json();
-          savedTripId = createData.tripId;
-          console.log('[useEffect/load] Created new trip with id:', savedTripId);
+          if (!savedTripId) {
+            const createRes = await fetch('/api/trips/create', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+            });
+            if (!createRes.ok) {
+              setLoaded(true);
+              return;
+            }
+            const createData = await createRes.json();
+            savedTripId = createData.tripId;
+          }
           localStorage.setItem("current-trip-id", savedTripId);
         }
 
@@ -1602,12 +1608,6 @@ export default function TravelExpenseTracker() {
     const timer = setTimeout(saveTrip, 1000);
     return () => clearTimeout(timer);
   }, [state, loaded, tripId]);
-
-  const handleReset = () => {
-    if (confirm("Reset all data? This cannot be undone.")) {
-      setState(DEFAULT_STATE);
-    }
-  };
 
   if (!loaded)
     return (
@@ -1677,21 +1677,6 @@ export default function TravelExpenseTracker() {
               expenses · {state.currency}
             </div>
           </div>
-          <button
-            onClick={handleReset}
-            style={{
-              background: "rgba(255,255,255,.15)",
-              border: "none",
-              color: "#fff",
-              padding: "6px 12px",
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Reset
-          </button>
         </div>
       </div>
 
