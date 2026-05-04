@@ -621,6 +621,7 @@ function ExpensesTab({ state, setState }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const openAdd = () => {
     const shares = {};
@@ -703,11 +704,13 @@ function ExpensesTab({ state, setState }) {
   };
 
   const saveExpense = () => {
+    if (isSaving) return;
     console.log('[saveExpense] Form validation - description:', form.description, 'amount:', form.amount, 'paidBy:', form.paidBy);
     if (!form.description || !form.amount || !form.paidBy) {
       console.log('[saveExpense] Validation failed, returning');
       return;
     }
+    setIsSaving(true);
     console.log('[saveExpense] Creating expense object');
     const expense = {
       id: editId || uid(),
@@ -730,6 +733,7 @@ function ExpensesTab({ state, setState }) {
     console.log('[saveExpense] Closing modal and resetting form');
     setShowAdd(false);
     setForm(null);
+    setIsSaving(false);
   };
 
   const deleteExpense = async (id) => {
@@ -1152,19 +1156,19 @@ function ExpensesTab({ state, setState }) {
             </div>
             <button
               onClick={saveExpense}
-              disabled={!form.description || !form.amount || !form.paidBy}
+              disabled={!form.description || !form.amount || !form.paidBy || isSaving}
               style={{
                 ...btnPrimary,
                 width: "100%",
                 marginTop: 16,
                 padding: "12px",
                 opacity:
-                  !form.description || !form.amount || !form.paidBy
+                  !form.description || !form.amount || !form.paidBy || isSaving
                     ? 0.5
                     : 1,
               }}
             >
-              {editId ? "Save Changes" : "Add Expense"}
+              {isSaving ? "Saving..." : editId ? "Save Changes" : "Add Expense"}
             </button>
           </>
         )}
