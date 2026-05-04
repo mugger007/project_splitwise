@@ -617,7 +617,7 @@ function SetupTab({ state, setState, tripId, setTripId, onSave }) {
 }
 
 // ── EXPENSES TAB ──
-function ExpensesTab({ state, setState }) {
+function ExpensesTab({ state, setState, tripId }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(null);
@@ -703,7 +703,7 @@ function ExpensesTab({ state, setState }) {
     });
   };
 
-  const saveExpense = () => {
+  const saveExpense = async () => {
     if (isSaving) return;
     console.log('[saveExpense] Form validation - description:', form.description, 'amount:', form.amount, 'paidBy:', form.paidBy);
     if (!form.description || !form.amount || !form.paidBy) {
@@ -723,13 +723,35 @@ function ExpensesTab({ state, setState }) {
       date: form.date,
     };
     console.log('[saveExpense] Expense object:', expense);
-    console.log('[saveExpense] Updating state with expense');
-    setState((s) => ({
-      ...s,
+    const newState = {
+      ...state,
       expenses: editId
-        ? s.expenses.map((e) => (e.id === editId ? expense : e))
-        : [...s.expenses, expense],
-    }));
+        ? state.expenses.map((e) => (e.id === editId ? expense : e))
+        : [...state.expenses, expense],
+    };
+    setState(newState);
+
+    try {
+      console.log('[saveExpense] Saving to Supabase...');
+      const result = await saveState(tripId, newState);
+      if (result.success && Object.keys(result.expenseIdMap).length > 0) {
+        console.log('[saveExpense] Updating expense IDs:', result.expenseIdMap);
+        setState((s) => ({
+          ...s,
+          expenses: s.expenses.map((e) => ({
+            ...e,
+            id: result.expenseIdMap[e.id] || e.id,
+          })),
+        }));
+      }
+      console.log('[saveExpense] Saved successfully');
+    } catch (e) {
+      console.error('[saveExpense] Save error:', e);
+      alert('Failed to save expense. Try again.');
+      setIsSaving(false);
+      return;
+    }
+
     console.log('[saveExpense] Closing modal and resetting form');
     setShowAdd(false);
     setForm(null);
@@ -814,9 +836,11 @@ function ExpensesTab({ state, setState }) {
             {state.currency} {totalExpenses.toLocaleString("en", { minimumFractionDigits: 2 })}
           </div>
         </div>
-        <button onClick={openAdd} style={{ ...btnPrimary, fontSize: 15, padding: "12px 24px" }}>
-          + Add Expense
-        </button>
+        <div>
+          <button onClick={openAdd} style={{ ...btnPrimary, fontSize: 15, padding: "12px 24px" }}>
+            + Add Expense
+          </button>
+        </div>
       </div>
 
       {state.expenses.length === 0 && (
@@ -1746,7 +1770,7 @@ export default function TravelExpenseTracker() {
           <SetupTab state={state} setState={setState} tripId={tripId} setTripId={setTripId} onSave={handleSaveTrip} />
         )}
         {tab === "expenses" && (
-          <ExpensesTab state={state} setState={setState} />
+          <ExpensesTab state={state} setState={setState} tripId={tripId} />
         )}
         {tab === "settlement" && <SettlementTab state={state} />}
         {tab === "breakdown" && <BreakdownTab state={state} />}
