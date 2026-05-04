@@ -23,23 +23,66 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-// ── Storage helpers (localStorage) ──
-function loadState() {
+// ── Supabase API helpers ──
+async function loadState(tripId) {
   try {
-    if (typeof window === 'undefined') return null;
-    const data = localStorage.getItem("splitwise-tracker-data");
-    return data ? JSON.parse(data) : null;
-  } catch {
+    console.log('[loadState] Loading tripId:', tripId);
+    if (!tripId) {
+      console.log('[loadState] No tripId, skipping load');
+      return null;
+    }
+    const res = await fetch('/api/trips/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tripId }),
+    });
+    console.log('[loadState] Response status:', res.status);
+    if (!res.ok) {
+      const error = await res.text();
+      console.error('[loadState] Load failed:', error);
+      return null;
+    }
+    const data = await res.json();
+    console.log('[loadState] Loaded data:', data);
+    return data;
+  } catch (e) {
+    console.error('[loadState] Error:', e);
     return null;
   }
 }
 
-function saveState(state) {
+async function saveState(tripId, state) {
   try {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem("splitwise-tracker-data", JSON.stringify(state));
+    console.log('[saveState] Saving tripId:', tripId, 'state:', state);
+    if (!tripId) {
+      console.log('[saveState] No tripId, skipping save');
+      return { success: false, expenseIdMap: {} };
+    }
+    const payload = {
+      tripId,
+      tripName: state.tripName,
+      currency: state.currency,
+      travelers: state.travelers,
+      expenses: state.expenses,
+    };
+    console.log('[saveState] Payload:', payload);
+    const res = await fetch('/api/trips/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    console.log('[saveState] Response status:', res.status);
+    if (!res.ok) {
+      const error = await res.text();
+      console.error('[saveState] Save failed:', error);
+      return { success: false, expenseIdMap: {} };
+    }
+    const result = await res.json();
+    console.log('[saveState] Success:', result);
+    return { success: true, expenseIdMap: result.expenseIdMap || {} };
   } catch (e) {
-    console.error("Save failed", e);
+    console.error('[saveState] Error:', e);
+    return { success: false, expenseIdMap: {} };
   }
 }
 
@@ -450,14 +493,14 @@ function ExpensesTab({ state, setState }) {
       const newShares = calcEvenShares(state.travelers, amt);
       const allShares = {};
       state.travelers.forEach((t) => (allShares[t] = newShares[t] || 0));
-      setForm((f) => ({ ...f, splitType: type, shares: allShares, selectedTravelers: [...state.travelers] }));
+      setForm((f) => ({ ...f, amount: String(amount), splitType: type, shares: allShares, selectedTravelers: [...state.travelers] }));
     } else {
       setForm((f) => {
         const selected = f.selectedTravelers?.length ? f.selectedTravelers : [...state.travelers];
         const autoShares = calcEvenShares(selected, amt);
         const allShares = {};
         state.travelers.forEach((t) => (allShares[t] = autoShares[t] || 0));
-        return { ...f, splitType: type, selectedTravelers: selected, shares: allShares };
+        return { ...f, amount: String(amount), splitType: type, selectedTravelers: selected, shares: allShares };
       });
     }
   };
@@ -476,7 +519,12 @@ function ExpensesTab({ state, setState }) {
   };
 
   const saveExpense = () => {
-    if (!form.description || !form.amount || !form.paidBy) return;
+    console.log('[saveExpense] Form validation - description:', form.description, 'amount:', form.amount, 'paidBy:', form.paidBy);
+    if (!form.description || !form.amount || !form.paidBy) {
+      console.log('[saveExpense] Validation failed, returning');
+      return;
+    }
+    console.log('[saveExpense] Creating expense object');
     const expense = {
       id: editId || uid(),
       description: form.description,
@@ -487,21 +535,51 @@ function ExpensesTab({ state, setState }) {
       shares: form.shares,
       date: form.date,
     };
+    console.log('[saveExpense] Expense object:', expense);
+    console.log('[saveExpense] Updating state with expense');
     setState((s) => ({
       ...s,
       expenses: editId
         ? s.expenses.map((e) => (e.id === editId ? expense : e))
         : [...s.expenses, expense],
     }));
+    console.log('[saveExpense] Closing modal and resetting form');
     setShowAdd(false);
     setForm(null);
   };
 
-  const deleteExpense = (id) => {
-    setState((s) => ({
-      ...s,
-      expenses: s.expenses.filter((e) => e.id !== id),
-    }));
+  const deleteExpense = async (id) => {
+    console.log('[deleteExpense] Deleting expense with id:', id, 'length:', id.length);
+    try {
+      // Only call API if expense ID is a long UUID (from DB)
+      if (id.length > 20) {
+        console.log('[deleteExpense] Calling delete API for DB expense:', id);
+        const res = await fetch('/api/expenses/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expenseId: id }),
+        });
+        console.log('[deleteExpense] Delete API response status:', res.status);
+        if (!res.ok) {
+          const error = await res.json();
+          console.error('[deleteExpense] Delete API failed:', error);
+          return;
+        }
+        const data = await res.json();
+        console.log('[deleteExpense] Delete API success:', data);
+      } else {
+        console.log('[deleteExpense] Local ID, skipping API call:', id);
+      }
+      setState((s) => {
+        console.log('[deleteExpense] Removing expense from state:', id);
+        return {
+          ...s,
+          expenses: s.expenses.filter((e) => e.id !== id),
+        };
+      });
+    } catch (e) {
+      console.error('[deleteExpense] Error:', e);
+    }
   };
 
   const totalExpenses = state.expenses.reduce((s, e) => s + e.amount, 0);
@@ -1305,16 +1383,75 @@ export default function TravelExpenseTracker() {
   const [state, setState] = useState(DEFAULT_STATE);
   const [tab, setTab] = useState("expenses");
   const [loaded, setLoaded] = useState(false);
+  const [tripId, setTripId] = useState(null);
 
+  // Load trip from Supabase (tripId from URL or localStorage)
   useEffect(() => {
-    const saved = loadState();
-    if (saved && saved.travelers) setState(saved);
-    setLoaded(true);
+    const loadTrip = async () => {
+      try {
+        console.log('[useEffect/load] Starting trip load');
+        // For now, use localStorage to store tripId
+        let savedTripId = localStorage.getItem("current-trip-id");
+        console.log('[useEffect/load] Saved tripId from localStorage:', savedTripId);
+
+        // If no tripId, create a new trip
+        if (!savedTripId) {
+          console.log('[useEffect/load] No tripId found, creating new trip');
+          const createRes = await fetch('/api/trips/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          if (!createRes.ok) {
+            console.error('[useEffect/load] Failed to create trip:', await createRes.text());
+            setLoaded(true);
+            return;
+          }
+          const createData = await createRes.json();
+          savedTripId = createData.tripId;
+          console.log('[useEffect/load] Created new trip with id:', savedTripId);
+          localStorage.setItem("current-trip-id", savedTripId);
+        }
+
+        setTripId(savedTripId);
+        const data = await loadState(savedTripId);
+        if (data) {
+          console.log('[useEffect/load] Setting state with loaded data');
+          setState(data);
+        } else {
+          console.log('[useEffect/load] No data returned from loadState, using default state');
+        }
+      } catch (e) {
+        console.error('[useEffect/load] Failed to load trip:', e);
+      }
+      setLoaded(true);
+    };
+    loadTrip();
   }, []);
 
+  // Save trip to Supabase whenever state changes
   useEffect(() => {
-    if (loaded) saveState(state);
-  }, [state, loaded]);
+    const saveTrip = async () => {
+      if (loaded && tripId) {
+        console.log('[useEffect/save] Triggering save for tripId:', tripId);
+        const result = await saveState(tripId, state);
+        if (result.success && Object.keys(result.expenseIdMap).length > 0) {
+          console.log('[useEffect/save] Updating expense IDs:', result.expenseIdMap);
+          setState((s) => ({
+            ...s,
+            expenses: s.expenses.map((e) => ({
+              ...e,
+              id: result.expenseIdMap[e.id] || e.id,
+            })),
+          }));
+        }
+      } else {
+        console.log('[useEffect/save] Skipping save - loaded:', loaded, 'tripId:', tripId);
+      }
+    };
+    // Debounce saves to avoid hammering API
+    const timer = setTimeout(saveTrip, 1000);
+    return () => clearTimeout(timer);
+  }, [state, loaded, tripId]);
 
   const handleReset = () => {
     if (confirm("Reset all data? This cannot be undone.")) {
