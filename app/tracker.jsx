@@ -278,7 +278,7 @@ const btnPrimary = {
 };
 
 // ── SETUP TAB ──
-function SetupTab({ state, setState, tripId, setTripId }) {
+function SetupTab({ state, setState, tripId, setTripId, onSave }) {
   const [newName, setNewName] = useState("");
   const [tripList, setTripList] = useState([]);
   const [loadStatus, setLoadStatus] = useState(null); // null | 'loading' | 'error'
@@ -594,6 +594,24 @@ function SetupTab({ state, setState, tripId, setTripId }) {
           </p>
         )}
       </div>
+
+      <button
+        onClick={onSave}
+        style={{
+          width: "100%",
+          padding: "12px",
+          marginTop: 18,
+          borderRadius: 8,
+          background: "var(--accent)",
+          color: "#fff",
+          border: "none",
+          fontWeight: 700,
+          fontSize: 14,
+          cursor: "pointer",
+        }}
+      >
+        💾 Save Trip
+      </button>
     </div>
   );
 }
@@ -1584,14 +1602,12 @@ export default function TravelExpenseTracker() {
     loadTrip();
   }, []);
 
-  // Save trip to Supabase whenever state changes
-  useEffect(() => {
-    const saveTrip = async () => {
-      if (loaded && tripId) {
-        console.log('[useEffect/save] Triggering save for tripId:', tripId);
-        const result = await saveState(tripId, state);
-        if (result.success && Object.keys(result.expenseIdMap).length > 0) {
-          console.log('[useEffect/save] Updating expense IDs:', result.expenseIdMap);
+  const handleSaveTrip = async () => {
+    if (!tripId) return;
+    try {
+      const result = await saveState(tripId, state);
+      if (result.success) {
+        if (Object.keys(result.expenseIdMap).length > 0) {
           setState((s) => ({
             ...s,
             expenses: s.expenses.map((e) => ({
@@ -1600,14 +1616,13 @@ export default function TravelExpenseTracker() {
             })),
           }));
         }
-      } else {
-        console.log('[useEffect/save] Skipping save - loaded:', loaded, 'tripId:', tripId);
+        alert("Trip saved!");
       }
-    };
-    // Debounce saves to avoid hammering API
-    const timer = setTimeout(saveTrip, 1000);
-    return () => clearTimeout(timer);
-  }, [state, loaded, tripId]);
+    } catch (e) {
+      console.error('Save error:', e);
+      alert("Save failed. Try again.");
+    }
+  };
 
   if (!loaded)
     return (
@@ -1724,7 +1739,7 @@ export default function TravelExpenseTracker() {
       {/* Content */}
       <div style={{ padding: "20px 16px 60px" }}>
         {tab === "setup" && (
-          <SetupTab state={state} setState={setState} tripId={tripId} setTripId={setTripId} />
+          <SetupTab state={state} setState={setState} tripId={tripId} setTripId={setTripId} onSave={handleSaveTrip} />
         )}
         {tab === "expenses" && (
           <ExpensesTab state={state} setState={setState} />
