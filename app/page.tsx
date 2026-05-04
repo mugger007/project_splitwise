@@ -1,6 +1,8 @@
 'use client';
 
+import App from './tracker.jsx';
+
 export default function Page() {
-  return <div>Test page</div>;
+  return <App />;
 }
 
