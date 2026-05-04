@@ -280,13 +280,19 @@ const btnPrimary = {
 // ── SETUP TAB ──
 function SetupTab({ state, setState, tripId, setTripId }) {
   const [newName, setNewName] = useState("");
-  const [loadInput, setLoadInput] = useState("");
-  const [loadStatus, setLoadStatus] = useState(null); // null | 'loading' | 'error' | 'success'
+  const [tripList, setTripList] = useState([]);
+  const [loadStatus, setLoadStatus] = useState(null); // null | 'loading' | 'error'
   const [loadError, setLoadError] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const handleLoadTrip = async () => {
-    const id = loadInput.trim();
+  useEffect(() => {
+    fetch('/api/trips/list')
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => Array.isArray(data) ? setTripList(data) : [])
+      .catch(() => {});
+  }, []);
+
+  const handleLoadTrip = async (id) => {
     if (!id) return;
     setLoadStatus('loading');
     setLoadError("");
@@ -298,16 +304,14 @@ function SetupTab({ state, setState, tripId, setTripId }) {
       });
       if (!res.ok) {
         setLoadStatus('error');
-        setLoadError(res.status === 404 ? "Trip not found." : "Failed to load trip.");
+        setLoadError("Failed to load trip.");
         return;
       }
       const data = await res.json();
       setState(data);
       setTripId(id);
       localStorage.setItem("current-trip-id", id);
-      setLoadInput("");
-      setLoadStatus('success');
-      setTimeout(() => setLoadStatus(null), 2000);
+      setLoadStatus(null);
     } catch {
       setLoadStatus('error');
       setLoadError("Network error. Try again.");
@@ -408,29 +412,54 @@ function SetupTab({ state, setState, tripId, setTripId }) {
           </div>
         )}
 
-        <InputRow label="Load Existing Trip">
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              style={{ ...inputStyle, flex: 1 }}
-              placeholder="Paste Trip ID..."
-              value={loadInput}
-              onChange={(e) => { setLoadInput(e.target.value); setLoadStatus(null); }}
-              onKeyDown={(e) => e.key === "Enter" && handleLoadTrip()}
-            />
-            <button
-              onClick={handleLoadTrip}
-              disabled={!loadInput.trim() || loadStatus === 'loading'}
-              style={{ ...btnPrimary, padding: "10px 16px", flexShrink: 0, opacity: !loadInput.trim() ? 0.5 : 1 }}
-            >
-              {loadStatus === 'loading' ? "..." : "Load"}
-            </button>
+        <InputRow label="Switch Trip">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {tripList.length === 0 && (
+              <div style={{ fontSize: 13, color: "var(--text-secondary)", padding: "8px 0" }}>
+                No other trips found.
+              </div>
+            )}
+            {tripList.map((t) => {
+              const isCurrent = t.id === tripId;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => !isCurrent && handleLoadTrip(t.id)}
+                  disabled={isCurrent || loadStatus === 'loading'}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: isCurrent ? "2px solid var(--accent)" : "1.5px solid var(--border)",
+                    background: isCurrent ? "var(--accent)15" : "var(--bg)",
+                    cursor: isCurrent ? "default" : "pointer",
+                    textAlign: "left",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: isCurrent ? "var(--accent)" : "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t.tripName}
+                      {isCurrent && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 500 }}>✓ current</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t.travelers.length > 0 ? t.travelers.join(", ") : "No travelers"} · {t.currency}
+                    </div>
+                  </div>
+                  {!isCurrent && (
+                    <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600, flexShrink: 0 }}>
+                      {loadStatus === 'loading' ? "..." : "Load →"}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {loadStatus === 'error' && (
+              <div style={{ fontSize: 12, color: "#ef4444" }}>{loadError}</div>
+            )}
           </div>
-          {loadStatus === 'error' && (
-            <div style={{ fontSize: 12, color: "#ef4444", marginTop: 6 }}>{loadError}</div>
-          )}
-          {loadStatus === 'success' && (
-            <div style={{ fontSize: 12, color: "#16a34a", marginTop: 6 }}>Trip loaded successfully!</div>
-          )}
         </InputRow>
 
         <button
