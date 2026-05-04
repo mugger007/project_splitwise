@@ -1,7 +1,6 @@
 'use client';
 
-import TravelExpenseTracker from './tracker';
-
 export default function Page() {
-  return <TravelExpenseTracker />;
+  return <div>Test page</div>;
 }
+
