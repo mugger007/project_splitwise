@@ -723,28 +723,27 @@ function ExpensesTab({ state, setState, tripId }) {
       date: form.date,
     };
     console.log('[saveExpense] Expense object:', expense);
-    const newState = {
-      ...state,
-      expenses: editId
-        ? state.expenses.map((e) => (e.id === editId ? expense : e))
-        : [...state.expenses, expense],
-    };
-    setState(newState);
 
     try {
       console.log('[saveExpense] Saving to Supabase...');
-      const result = await saveState(tripId, newState);
-      if (result.success && Object.keys(result.expenseIdMap).length > 0) {
-        console.log('[saveExpense] Updating expense IDs:', result.expenseIdMap);
-        setState((s) => ({
-          ...s,
-          expenses: s.expenses.map((e) => ({
-            ...e,
-            id: result.expenseIdMap[e.id] || e.id,
-          })),
-        }));
+      const res = await fetch('/api/expenses/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tripId, expense }),
+      });
+      if (!res.ok) {
+        throw new Error(await res.text());
       }
-      console.log('[saveExpense] Saved successfully');
+      const result = await res.json();
+      console.log('[saveExpense] Saved successfully, result:', result);
+
+      // Update local state with saved expense (ID mapping)
+      setState((s) => {
+        const updatedExpenses = editId
+          ? s.expenses.map((e) => (e.id === editId ? result.expense : e))
+          : [...s.expenses, result.expense];
+        return { ...s, expenses: updatedExpenses };
+      });
     } catch (e) {
       console.error('[saveExpense] Save error:', e);
       alert('Failed to save expense. Try again.');
