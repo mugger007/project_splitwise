@@ -278,8 +278,71 @@ const btnPrimary = {
 };
 
 // ── SETUP TAB ──
-function SetupTab({ state, setState }) {
+function SetupTab({ state, setState, tripId, setTripId }) {
   const [newName, setNewName] = useState("");
+  const [loadInput, setLoadInput] = useState("");
+  const [loadStatus, setLoadStatus] = useState(null); // null | 'loading' | 'error' | 'success'
+  const [loadError, setLoadError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const handleLoadTrip = async () => {
+    const id = loadInput.trim();
+    if (!id) return;
+    setLoadStatus('loading');
+    setLoadError("");
+    try {
+      const res = await fetch('/api/trips/load', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tripId: id }),
+      });
+      if (!res.ok) {
+        setLoadStatus('error');
+        setLoadError(res.status === 404 ? "Trip not found." : "Failed to load trip.");
+        return;
+      }
+      const data = await res.json();
+      setState(data);
+      setTripId(id);
+      localStorage.setItem("current-trip-id", id);
+      setLoadInput("");
+      setLoadStatus('success');
+      setTimeout(() => setLoadStatus(null), 2000);
+    } catch {
+      setLoadStatus('error');
+      setLoadError("Network error. Try again.");
+    }
+  };
+
+  const handleNewTrip = async () => {
+    if (!confirm("Create a new trip? Current trip will remain saved in Supabase.")) return;
+    setLoadStatus('loading');
+    try {
+      const res = await fetch('/api/trips/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        setLoadStatus('error');
+        setLoadError("Failed to create trip.");
+        return;
+      }
+      const { tripId: newId } = await res.json();
+      localStorage.setItem("current-trip-id", newId);
+      setTripId(newId);
+      setState({ tripName: "My Trip", currency: "MYR", travelers: [], expenses: [] });
+      setLoadStatus(null);
+    } catch {
+      setLoadStatus('error');
+      setLoadError("Network error. Try again.");
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(tripId || "");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   const addTraveler = () => {
     const name = newName.trim();
@@ -306,6 +369,80 @@ function SetupTab({ state, setState }) {
 
   return (
     <div style={{ maxWidth: 500, margin: "0 auto" }}>
+      {/* Trip Load/Create */}
+      <div
+        style={{
+          background: "var(--bg-card)",
+          borderRadius: 14,
+          padding: 22,
+          marginBottom: 18,
+          border: "1px solid var(--border)",
+        }}
+      >
+        <h3
+          style={{
+            margin: "0 0 16px",
+            fontSize: 15,
+            color: "var(--text)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          🔗 Trip
+        </h3>
+
+        {tripId && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 5, textTransform: "uppercase", letterSpacing: ".5px" }}>
+              Current Trip ID
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ flex: 1, padding: "8px 12px", borderRadius: 8, background: "var(--bg)", border: "1.5px solid var(--border)", fontSize: 12, color: "var(--text-secondary)", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {tripId}
+              </div>
+              <button onClick={handleCopy} style={{ ...btnPrimary, padding: "8px 14px", fontSize: 12, background: copied ? "#16a34a" : "var(--accent)", flexShrink: 0 }}>
+                {copied ? "✓ Copied" : "📋 Copy"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <InputRow label="Load Existing Trip">
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              style={{ ...inputStyle, flex: 1 }}
+              placeholder="Paste Trip ID..."
+              value={loadInput}
+              onChange={(e) => { setLoadInput(e.target.value); setLoadStatus(null); }}
+              onKeyDown={(e) => e.key === "Enter" && handleLoadTrip()}
+            />
+            <button
+              onClick={handleLoadTrip}
+              disabled={!loadInput.trim() || loadStatus === 'loading'}
+              style={{ ...btnPrimary, padding: "10px 16px", flexShrink: 0, opacity: !loadInput.trim() ? 0.5 : 1 }}
+            >
+              {loadStatus === 'loading' ? "..." : "Load"}
+            </button>
+          </div>
+          {loadStatus === 'error' && (
+            <div style={{ fontSize: 12, color: "#ef4444", marginTop: 6 }}>{loadError}</div>
+          )}
+          {loadStatus === 'success' && (
+            <div style={{ fontSize: 12, color: "#16a34a", marginTop: 6 }}>Trip loaded successfully!</div>
+          )}
+        </InputRow>
+
+        <button
+          onClick={handleNewTrip}
+          disabled={loadStatus === 'loading'}
+          style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1.5px dashed var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+        >
+          + New Trip
+        </button>
+      </div>
+
+      {/* Trip Details */}
       <div
         style={{
           background: "var(--bg-card)",
@@ -586,6 +723,15 @@ function ExpensesTab({ state, setState }) {
   const getCatInfo = (name) =>
     CATEGORIES.find((c) => c.name === name) || CATEGORIES[6];
 
+  const groupedExpenses = useMemo(() => {
+    const groups = {};
+    [...state.expenses].sort((a, b) => b.date.localeCompare(a.date)).forEach((ex) => {
+      if (!groups[ex.date]) groups[ex.date] = [];
+      groups[ex.date].push(ex);
+    });
+    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
+  }, [state.expenses]);
+
   const shareTotal = form
     ? Object.values(form.shares).reduce((s, v) => s + (parseFloat(v) || 0), 0)
     : 0;
@@ -641,99 +787,74 @@ function ExpensesTab({ state, setState }) {
         </div>
       )}
 
-      {[...state.expenses].reverse().map((ex) => {
-        const cat = getCatInfo(ex.category);
+      {groupedExpenses.map(([date, exps]) => {
+        const dayTotal = exps.reduce((s, e) => s + e.amount, 0);
+        const label = new Date(date + "T00:00:00").toLocaleDateString("en", {
+          weekday: "short", day: "numeric", month: "short", year: "numeric",
+        });
         return (
-          <div
-            key={ex.id}
-            style={{
-              background: "var(--bg-card)",
-              borderRadius: 12,
-              padding: 16,
-              marginBottom: 10,
-              border: "1px solid var(--border)",
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-            }}
-          >
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                background: cat.color + "20",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 22,
-                flexShrink: 0,
-              }}
-            >
-              {cat.icon}
+          <div key={date} style={{ marginBottom: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 2px 8px" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: ".5px" }}>
+                {label}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>
+                {state.currency} {dayTotal.toLocaleString("en", { minimumFractionDigits: 2 })}
+              </span>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: 14,
-                  color: "var(--text)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {ex.description}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "var(--text-secondary)",
-                  marginTop: 2,
-                }}
-              >
-                Paid by <strong>{ex.paidBy}</strong> · {ex.date} ·{" "}
-                {ex.splitType === "equal" ? "Equal split" : "Custom split"}
-              </div>
-            </div>
-            <div
-              style={{
-                fontWeight: 800,
-                fontSize: 16,
-                color: "var(--text)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {state.currency} {ex.amount.toLocaleString("en", { minimumFractionDigits: 2 })}
-            </div>
-            <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-              <button
-                onClick={() => openEdit(ex)}
-                style={{
-                  border: "none",
-                  background: "var(--bg)",
-                  borderRadius: 6,
-                  padding: "6px 8px",
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
-              >
-                ✏️
-              </button>
-              <button
-                onClick={() => deleteExpense(ex.id)}
-                style={{
-                  border: "none",
-                  background: "var(--bg)",
-                  borderRadius: 6,
-                  padding: "6px 8px",
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
-              >
-                🗑️
-              </button>
-            </div>
+            {exps.map((ex) => {
+              const cat = getCatInfo(ex.category);
+              return (
+                <div
+                  key={ex.id}
+                  style={{
+                    background: "var(--bg-card)",
+                    borderRadius: 12,
+                    padding: 16,
+                    marginBottom: 8,
+                    border: "1px solid var(--border)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      background: cat.color + "20",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 22,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {cat.icon}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {ex.description}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                      Paid by <strong>{ex.paidBy}</strong> · {ex.splitType === "equal" ? "Equal split" : "Custom split"}
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "var(--text)", whiteSpace: "nowrap" }}>
+                    {state.currency} {ex.amount.toLocaleString("en", { minimumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <button onClick={() => openEdit(ex)} style={{ border: "none", background: "var(--bg)", borderRadius: 6, padding: "6px 8px", cursor: "pointer", fontSize: 14 }}>
+                      ✏️
+                    </button>
+                    <button onClick={() => deleteExpense(ex.id)} style={{ border: "none", background: "var(--bg)", borderRadius: 6, padding: "6px 8px", cursor: "pointer", fontSize: 14 }}>
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -1589,7 +1710,7 @@ export default function TravelExpenseTracker() {
       {/* Content */}
       <div style={{ padding: "20px 16px 60px" }}>
         {tab === "setup" && (
-          <SetupTab state={state} setState={setState} />
+          <SetupTab state={state} setState={setState} tripId={tripId} setTripId={setTripId} />
         )}
         {tab === "expenses" && (
           <ExpensesTab state={state} setState={setState} />
