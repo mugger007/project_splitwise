@@ -283,7 +283,6 @@ function SetupTab({ state, setState, tripId, setTripId, onSave }) {
   const [tripList, setTripList] = useState([]);
   const [loadStatus, setLoadStatus] = useState(null); // null | 'loading' | 'error'
   const [loadError, setLoadError] = useState("");
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetch('/api/trips/list')
@@ -319,7 +318,7 @@ function SetupTab({ state, setState, tripId, setTripId, onSave }) {
   };
 
   const handleNewTrip = async () => {
-    if (!confirm("Create a new trip? Current trip will remain saved in Supabase.")) return;
+    if (!confirm("Create a new trip? Current trip will remain saved.")) return;
     setLoadStatus('loading');
     try {
       const res = await fetch('/api/trips/create', {
@@ -396,70 +395,38 @@ function SetupTab({ state, setState, tripId, setTripId, onSave }) {
           🔗 Trip
         </h3>
 
-        {tripId && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 5, textTransform: "uppercase", letterSpacing: ".5px" }}>
-              Current Trip ID
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ flex: 1, padding: "8px 12px", borderRadius: 8, background: "var(--bg)", border: "1.5px solid var(--border)", fontSize: 12, color: "var(--text-secondary)", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {tripId}
-              </div>
-              <button onClick={handleCopy} style={{ ...btnPrimary, padding: "8px 14px", fontSize: 12, background: copied ? "#16a34a" : "var(--accent)", flexShrink: 0 }}>
-                {copied ? "✓ Copied" : "📋 Copy"}
-              </button>
-            </div>
-          </div>
-        )}
-
         <InputRow label="Switch Trip">
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {tripList.length === 0 && (
-              <div style={{ fontSize: 13, color: "var(--text-secondary)", padding: "8px 0" }}>
-                No other trips found.
-              </div>
+          <select
+            value={tripId}
+            onChange={(e) => handleLoadTrip(e.target.value)}
+            disabled={loadStatus === 'loading'}
+            style={{
+              ...inputStyle,
+              cursor: "pointer",
+              appearance: "none",
+              paddingRight: "32px",
+              backgroundImage: "url(\"data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e\")",
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 8px center",
+              backgroundSize: "20px",
+            }}
+          >
+            {tripId && <option value={tripId}>{tripList.find(t => t.id === tripId)?.tripName || 'Current Trip'}</option>}
+            {tripList.length === 0 ? (
+              <option disabled>No other trips</option>
+            ) : (
+              tripList
+                .filter(t => t.id !== tripId)
+                .map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.tripName} ({t.travelers.length > 0 ? t.travelers.join(', ') : 'No travelers'}) · {t.currency}
+                  </option>
+                ))
             )}
-            {tripList.map((t) => {
-              const isCurrent = t.id === tripId;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => !isCurrent && handleLoadTrip(t.id)}
-                  disabled={isCurrent || loadStatus === 'loading'}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: isCurrent ? "2px solid var(--accent)" : "1.5px solid var(--border)",
-                    background: isCurrent ? "var(--accent)15" : "var(--bg)",
-                    cursor: isCurrent ? "default" : "pointer",
-                    textAlign: "left",
-                    gap: 10,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: isCurrent ? "var(--accent)" : "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {t.tripName}
-                      {isCurrent && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 500 }}>✓ current</span>}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {t.travelers.length > 0 ? t.travelers.join(", ") : "No travelers"} · {t.currency}
-                    </div>
-                  </div>
-                  {!isCurrent && (
-                    <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600, flexShrink: 0 }}>
-                      {loadStatus === 'loading' ? "..." : "Load →"}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-            {loadStatus === 'error' && (
-              <div style={{ fontSize: 12, color: "#ef4444" }}>{loadError}</div>
-            )}
-          </div>
+          </select>
+          {loadStatus === 'error' && (
+            <div style={{ fontSize: 12, color: "#ef4444", marginTop: 6 }}>{loadError}</div>
+          )}
         </InputRow>
 
         <button
