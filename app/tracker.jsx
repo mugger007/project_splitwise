@@ -289,7 +289,7 @@ function SetupTab({ state, setState, tripId, setTripId, onSave }) {
       .then((r) => r.ok ? r.json() : [])
       .then((data) => Array.isArray(data) ? setTripList(data) : [])
       .catch(() => {});
-  }, []);
+  }, [tripId]);
 
   const handleLoadTrip = async (id) => {
     if (!id) return;
@@ -411,18 +411,20 @@ function SetupTab({ state, setState, tripId, setTripId, onSave }) {
               backgroundSize: "20px",
             }}
           >
-            {tripId && <option value={tripId}>{tripList.find(t => t.id === tripId)?.tripName || 'Current Trip'}</option>}
-            {tripList.length === 0 ? (
-              <option disabled>No other trips</option>
-            ) : (
-              tripList
-                .filter(t => t.id !== tripId)
-                .map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.tripName} ({t.travelers.length > 0 ? t.travelers.join(', ') : 'No travelers'}) · {t.currency}
-                  </option>
-                ))
+            {tripId && (
+              <option value={tripId}>
+                {tripList.find(t => t.id === tripId)?.tripName || 'Current Trip'} ✓
+              </option>
             )}
+            {tripList.map(t => {
+              if (t.id === tripId) return null;
+              return (
+                <option key={t.id} value={t.id}>
+                  {t.tripName} ({t.travelers.length > 0 ? t.travelers.join(', ') : 'No travelers'}) · {t.currency}
+                </option>
+              );
+            })}
+            {tripList.length === 0 && <option disabled>No trips found</option>}
           </select>
           {loadStatus === 'error' && (
             <div style={{ fontSize: 12, color: "#ef4444", marginTop: 6 }}>{loadError}</div>
