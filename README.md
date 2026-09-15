@@ -137,6 +137,10 @@ All data is stored in browser localStorage:
 - Scope: Per domain/origin
 - Clearing browser data will erase trip data
 
+Trip records are stored in Supabase. Because the app does not have authentication yet,
+run `supabase/migrations/004_allow_shared_trip_reads.sql` after the earlier migrations
+so the Switch Trip list can read all trips and their related travelers.
+
 ## Troubleshooting
 
 **Data not saving?**
